@@ -6,9 +6,9 @@ import methods
 import visualization
 
 # parameters
-TRIALS = 2000
-ACTION_SPACE_SIZE = 10
-STEPS = 1000
+TRIALS = 500
+ACTION_SPACE_SIZE = 100
+STEPS = 500
 
 if __name__ == "__main__":
     vizualizer = visualization.Visualizer()

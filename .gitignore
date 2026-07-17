@@ -1,3 +1,7 @@
 .DS_STORE
 .venv
+.vscode
 __pycache__
+
+**/**.png
+**/**.json

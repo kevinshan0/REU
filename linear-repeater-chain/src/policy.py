@@ -29,8 +29,17 @@ import pickle
 import time
 
 import numpy as np
+from scipy.sparse import coo_matrix
+from scipy.sparse.linalg import spsolve
 
 from environment import Configuration, Qubit, State
+
+# save_policyiter_data / save_swapasap_data (and their check_*/load_* companions)
+# use paths relative to 'data_policyiter/' and 'data_swapasap/', which they
+# resolve against the current process's CWD. Anchoring CWD to this module's own
+# directory here means those always land under src/, regardless of where this
+# module is run or imported from (matches distill.py / simulate.py).
+os.chdir(Path(__file__).resolve().parent)
 
 
 # --------------------------------------------------------------------------- #
@@ -172,7 +181,11 @@ class Agent:
     far, its valid action space, its current policy (one-hot over
     action_space once converged), and its current value estimate. The
     expected number of time slots to delivery from a state is
-    -(value + 1)."""
+    -(value + 1) -- matching the paper's reference implementation
+    (AlvaroGI/optimal-homogeneous-chain), whose own Monte Carlo validation
+    (main.py's simulate_environment) reports delivery time as a 0-indexed
+    count of transitions (T_vec.append(time-1)), i.e. delivering on the very
+    first attempt is time slot 0, not 1."""
 
     def __init__(self, n, parameters):
         s0 = qubits_to_key(State.initial(n, parameters).qubits)
@@ -218,11 +231,132 @@ class Agent:
 
 
 # --------------------------------------------------------------------------- #
+# ---------------------------  POLICY EVALUATION  ----------------------------- #
+# --------------------------------------------------------------------------- #
+
+def _evaluate_policy_iterative(agent, parameters, tol, progress):
+    """Evaluate the current policy stored in `agent` by successive
+    approximation: repeatedly apply the Bellman backup to every known state
+    until the largest per-state change drops below `tol`. New states
+    encountered along the way are registered via agent.observe() and picked
+    up on a later pass of the same sweep loop, since it re-reads
+    len(agent.state_list) every iteration.
+    Returns v0: the evolution of the initial state's value across sweeps."""
+    v0 = []
+    error = np.inf
+    while error > tol:
+        error = 0.0
+        idx = 0
+        while idx < len(agent.state_list):
+            key = agent.state_list[idx]
+            if _is_terminal(key):
+                idx += 1
+                continue
+
+            value = agent.get(idx, "value")
+            policy = agent.get(idx, "policy")
+            action_space = agent.get(idx, "action_space")
+
+            v = 0.0
+            for action, action_prob in zip(action_space, policy):
+                if action_prob == 0.0:
+                    continue
+                next_keys, probs, next_action_spaces = cached_step(parameters, key, action)
+                for s_key, P, a_space in zip(next_keys, probs, next_action_spaces):
+                    if P == 0.0:
+                        continue
+                    s_idx = agent.observe(s_key, a_space)
+                    v += action_prob * P * (-1 + agent.get(s_idx, "value"))
+
+            error = max(error, abs(value - v))
+            agent.update(idx, v, "value")
+            idx += 1
+
+        v0.append(agent.get(0, "value"))
+        if progress:
+            print("Policy eval.: error = %.2e > %.2e = tolerance" % (error, tol), end="\r")
+    return v0
+
+
+def _evaluate_policy_direct(agent, parameters):
+    """Evaluate the current policy stored in `agent` exactly, by solving the
+    linear system it defines rather than iterating a Bellman backup to
+    convergence. For a fixed policy, V(s) = -1 + sum_a policy(s,a) sum_s'
+    P(s'|s,a) V(s') is just |S| linear equations in |S| unknowns (terminal
+    states are absorbing with V=0 by convention, so they contribute no
+    column -- only the -1 reward -- and are never part of the unknown
+    vector): (I - P_pi) V = -1. Solving it directly sidesteps the case that
+    hurts _evaluate_policy_iterative worst -- a slow-mixing chain (e.g. low
+    p) that needs a huge number of sweeps before the truncated Bellman sum
+    has accounted for enough probability mass to satisfy an absolute
+    tolerance. A direct solve's cost depends on the sparsity structure of
+    the transition graph, not on how slowly that chain mixes.
+
+    Walks agent.state_list exactly like _evaluate_policy_iterative (and so
+    discovers new states via agent.observe() the same way), but instead of
+    accumulating value updates it accumulates (row, col) -> coefficient
+    entries for the sparse matrix, then solves once.
+    Returns v0: [initial state's value] (a single exact value, not a
+    per-sweep trace, since there's no sweep-by-sweep convergence here)."""
+    coeffs = {}  # (row_agent_idx, col_agent_idx) -> accumulated coefficient
+
+    idx = 0
+    while idx < len(agent.state_list):
+        key = agent.state_list[idx]
+        if _is_terminal(key):
+            idx += 1
+            continue
+
+        policy = agent.get(idx, "policy")
+        action_space = agent.get(idx, "action_space")
+
+        for action, action_prob in zip(action_space, policy):
+            if action_prob == 0.0:
+                continue
+            next_keys, probs, next_action_spaces = cached_step(parameters, key, action)
+            for s_key, P, a_space in zip(next_keys, probs, next_action_spaces):
+                if P == 0.0:
+                    continue
+                s_idx = agent.observe(s_key, a_space)
+                if not _is_terminal(s_key):
+                    # Terminal successors contribute nothing (V=0 there);
+                    # only non-terminal successors become matrix columns.
+                    coeff_key = (idx, s_idx)
+                    coeffs[coeff_key] = coeffs.get(coeff_key, 0.0) - action_prob * P
+
+        idx += 1
+
+    non_terminal_indices = [i for i in range(len(agent.state_list))
+                             if not _is_terminal(agent.state_list[i])]
+    row_of = {agent_idx: row for row, agent_idx in enumerate(non_terminal_indices)}
+    size = len(non_terminal_indices)
+
+    rows, cols, data = [], [], []
+    for (r_idx, c_idx), coeff in coeffs.items():
+        rows.append(row_of[r_idx])
+        cols.append(row_of[c_idx])
+        data.append(coeff)
+    for agent_idx in non_terminal_indices:
+        rows.append(row_of[agent_idx])
+        cols.append(row_of[agent_idx])
+        data.append(1.0)  # the "I" term; coo_matrix sums duplicate entries on conversion
+
+    A = coo_matrix((data, (rows, cols)), shape=(size, size)).tocsc()
+    b = -np.ones(size)
+    V = spsolve(A, b)
+
+    for row, agent_idx in enumerate(non_terminal_indices):
+        agent.update(agent_idx, float(V[row]), "value")
+
+    return [agent.get(0, "value")]
+
+
+# --------------------------------------------------------------------------- #
 # ---------------------------  POLICY ITERATION  ----------------------------- #
 # --------------------------------------------------------------------------- #
 
 def policy_iteration(n, p, p_s, cutoff, tolerance=1e-5, tolerance_stability=1e-1,
-                      progress=True, savedata=True, allow_discard=False):
+                      progress=True, savedata=True, allow_discard=False, method="iterative"):
     """Find the optimal swap policy for an n-node chain under the qubit-age
     cutoff model, minimizing the expected number of time slots to end-to-end
     entanglement.
@@ -234,9 +368,18 @@ def policy_iteration(n, p, p_s, cutoff, tolerance=1e-5, tolerance_stability=1e-1
             · cutoff:   (int) qubit-age cutoff - qubits whose age reaches
                         the cutoff are discarded, along with their partner
                         (or on its own, if hanging -- see environment.py).
-            · tolerance:    (float) the algorithm stops when the policy is
-                            stable and the maximum change in value between
-                            sweeps is smaller than this tolerance.
+            · tolerance:    (float) the algorithm stops once EITHER the policy
+                            is exactly stable for two consecutive outer
+                            iterations, OR every state's value has changed by
+                            less than this much since the last outer
+                            iteration. The two can diverge when several
+                            actions are (numerically) tied in Q-value at some
+                            states: exact evaluation (method="direct") can
+                            then cycle between equally-good actions forever
+                            without ever registering as "exactly stable",
+                            even though the value itself stopped moving after
+                            the first few iterations -- the value-based check
+                            exists to catch exactly that case.
             · tolerance_stability:  (float) looser tolerance used for policy
                                     evaluation sweeps until the policy is
                                     stable; speeds up early iterations.
@@ -254,6 +397,15 @@ def policy_iteration(n, p, p_s, cutoff, tolerance=1e-5, tolerance_stability=1e-1
                                 the discard dimension of the action space
                                 linear rather than exponential in the number
                                 of occupied qubits.
+            · method:   (str) how to run each policy evaluation step:
+                        "iterative" (default) uses successive approximation
+                        (Bellman-backup sweeps to a tolerance), matching the
+                        paper's approach; "direct" solves the linear system
+                        the fixed policy defines exactly via sparse LU
+                        (see _evaluate_policy_direct). Direct solving costs
+                        don't depend on how slowly the chain mixes, so it is
+                        especially advantageous at low p, where iterative
+                        evaluation can need very many sweeps to converge.
         ---Outputs---
             · v0_evol:  (list of lists) each list contains the evolution of
                         the value of the empty initial state over one policy
@@ -262,12 +414,14 @@ def policy_iteration(n, p, p_s, cutoff, tolerance=1e-5, tolerance_stability=1e-1
                           distinct state of the MDP, with keys 'state'
                           (qubit-age tuple), 'action_space', 'policy'
                           (one-hot once converged), and 'value' (expected
-                          delivery time from this state is -(value+1)).
+                          delivery time from this state is -(value+1), see
+                          the Agent class docstring).
             · exe_time: (float) execution time of the algorithm in seconds."""
     assert isinstance(n, int) and n >= 2, "n must be an integer >= 2"
     assert 0 <= p <= 1, "p must be between zero and one"
     assert 0 <= p_s <= 1, "p_s must be between zero and one"
     assert isinstance(cutoff, int) and cutoff > 0, "cutoff must be a positive integer"
+    assert method in ("iterative", "direct"), 'method must be "iterative" or "direct"'
 
     parameters = Configuration(p=p, p_s=p_s, cut=cutoff, allow_discard=allow_discard)
     agent = Agent(n, parameters)
@@ -279,44 +433,26 @@ def policy_iteration(n, p, p_s, cutoff, tolerance=1e-5, tolerance_stability=1e-1
     tol = tolerance_stability
 
     while True:
+        prev_values = [agent.get(i, "value") for i in range(len(agent.state_list))]
+        prev_len = len(prev_values)
+
         ### Policy evaluation step ###
-        v0 = []
-        error = np.inf
-        while error > tol:
-            error = 0.0
-            idx = 0
-            while idx < len(agent.state_list):
-                key = agent.state_list[idx]
-                if _is_terminal(key):
-                    idx += 1
-                    continue
-
-                value = agent.get(idx, "value")
-                policy = agent.get(idx, "policy")
-                action_space = agent.get(idx, "action_space")
-
-                v = 0.0
-                for action, action_prob in zip(action_space, policy):
-                    if action_prob == 0.0:
-                        continue
-                    next_keys, probs, next_action_spaces = cached_step(parameters, key, action)
-                    for s_key, P, a_space in zip(next_keys, probs, next_action_spaces):
-                        if P == 0.0:
-                            continue
-                        s_idx = agent.observe(s_key, a_space)
-                        v += action_prob * P * (-1 + agent.get(s_idx, "value"))
-
-                error = max(error, abs(value - v))
-                agent.update(idx, v, "value")
-                idx += 1
-
-            v0.append(agent.get(0, "value"))
-            if progress:
-                print("Policy eval.: error = %.2e > %.2e = tolerance" % (error, tol), end="\r")
+        if method == "direct":
+            v0 = _evaluate_policy_direct(agent, parameters)
+        else:
+            v0 = _evaluate_policy_iterative(agent, parameters, tol, progress)
         v0_evol.append(v0)
 
-        ### Stop if policy has converged ###
-        if policy_is_stable and policy_was_stable:
+        # How much every state's value moved since the last outer iteration
+        # (states discovered just now compare against their creation default
+        # of 0.0, i.e. as if they'd already existed at that value).
+        value_delta = 0.0
+        for i in range(len(agent.state_list)):
+            before = prev_values[i] if i < prev_len else 0.0
+            value_delta = max(value_delta, abs(agent.get(i, "value") - before))
+
+        ### Stop if the policy or its value has converged ###
+        if (policy_is_stable and policy_was_stable) or value_delta < tolerance:
             break
 
         ### Policy improvement step ###

@@ -5,4 +5,7 @@ data_policyiter
 data_swapasap
 data_localpolicy
 data_pomdppolicy
+data_localopt
+data_brtdp
+data_infodelay
 visualizations

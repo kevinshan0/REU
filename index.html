@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Optimal Repeater Policies</title>
+<meta name="description" content="Undergraduate research on when a quantum repeater node should swap, wait or discard: an exact MDP with qubit-age cutoffs, and a delayed-information multi-agent version.">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'\\(',right:'\\)',display:false}]})"></script>
+<style>
+:root{
+  --bg:#fcfcfb; --surface:#f3f2ef; --ink:#151514; --ink2:#52514e; --muted:#898781; --line:#e4e2dd;
+  --accent:#2a78d6; --accent-soft:#e7f0fb; --s3:#a9a7a1; --s4:#7aa8e3; --s5:#2a78d6; --warn:#c2410c;
+  --code:#efeeea;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#121212; --surface:#1c1c1b; --ink:#ecebe8; --ink2:#b5b3ad; --muted:#85837d; --line:#2e2d2b;
+    --accent:#6aa5ee; --accent-soft:#1a2a3d; --s3:#6f6d68; --s4:#4f7fb8; --s5:#6aa5ee; --warn:#f08a5d;
+    --code:#22221f;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16.5px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+main{max-width:840px;margin:0 auto;padding:56px 16px 80px}
+header .kicker{color:var(--accent);font-weight:600;font-size:14px;letter-spacing:.04em;text-transform:uppercase;margin:0 0 10px}
+h1{font-size:clamp(30px,5vw,42px);line-height:1.15;margin:0 0 16px;letter-spacing:-.015em}
+.lede{font-size:19px;color:var(--ink2);margin:0 0 18px}
+.meta{color:var(--muted);font-size:14.5px;margin:0}
+.meta a{color:var(--ink2)}
+nav.toc{display:flex;flex-wrap:wrap;gap:8px;margin:28px 0 8px}
+nav.toc a{font-size:14px;text-decoration:none;color:var(--ink2);background:var(--surface);padding:5px 12px;border-radius:999px;border:1px solid var(--line)}
+nav.toc a:hover{color:var(--accent);border-color:var(--accent)}
+h2{font-size:26px;margin:64px 0 6px;letter-spacing:-.01em}
+h2 + .sub{color:var(--muted);margin:0 0 18px;font-size:15px}
+h3{font-size:18px;margin:34px 0 6px}
+p{margin:0 0 14px}
+a{color:var(--accent)}
+code{font:13.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);padding:1px 5px;border-radius:4px}
+pre{background:var(--code);border-radius:10px;padding:14px 16px;overflow-x:auto;margin:0 0 16px}
+pre code{background:none;padding:0}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:22px 0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.card .big{font-size:30px;font-weight:700;color:var(--accent);line-height:1.1;margin-bottom:6px}
+.card p{margin:0;color:var(--ink2);font-size:14.5px;line-height:1.5}
+figure{margin:26px 0 30px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 16px 12px}
+figcaption{color:var(--ink2);font-size:14.5px;line-height:1.55;margin-top:8px}
+figcaption b{color:var(--ink)}
+.chart{width:100%;height:auto;display:block}
+.chart .grid{stroke:var(--line);stroke-width:1}
+.chart .tick{fill:var(--muted);font-size:12px}
+.chart .axis{fill:var(--ink2);font-size:12.5px}
+.chart .note{fill:var(--accent);font-size:12px;font-style:italic}
+.chart .ln{fill:none;stroke-width:2.4;stroke-linejoin:round;stroke-linecap:round}
+.chart .ln.s3{stroke:var(--s3)} .chart .ln.s4{stroke:var(--s4)} .chart .ln.s5{stroke:var(--s5)}
+.chart .dot{stroke:var(--surface);stroke-width:1.5}
+.chart .dot.s3{fill:var(--s3)} .chart .dot.s4{fill:var(--s4)} .chart .dot.s5{fill:var(--s5)}
+.chart .lbl{font-size:12.5px;font-weight:600}
+.chart .lbl.s3{fill:var(--s3)} .chart .lbl.s4{fill:var(--s4)} .chart .lbl.s5{fill:var(--s5)}
+.chart .cell0{fill:var(--bg)}
+.chart .cell{fill:var(--accent)}
+.chart .cv{fill:var(--ink2);font-size:12px;font-variant-numeric:tabular-nums}
+.chart .cv.dark{fill:#fff}
+.chart .node{fill:var(--bg);stroke:var(--line);stroke-width:1.5}
+.chart .q{fill:var(--accent)}
+.chart .link{stroke:var(--accent);stroke-width:3;stroke-linecap:round}
+.chart .link.off{stroke:var(--line);stroke-dasharray:4 6}
+.chart .goal{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-dasharray:3 5}
+table{border-collapse:collapse;width:100%;font-size:14.5px;font-variant-numeric:tabular-nums;margin:6px 0 18px}
+th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:600;font-size:13px}
+.tablewrap{overflow-x:auto}
+.callout{border-left:3px solid var(--accent);background:var(--accent-soft);padding:12px 16px;border-radius:0 10px 10px 0;margin:18px 0}
+.callout p:last-child{margin:0}
+ol.phases{padding-left:22px} ol.phases li{margin:3px 0}
+.math{overflow-x:auto;overflow-y:hidden}
+footer{margin-top:70px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+footer li{margin:4px 0}
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="kicker">Quantum networking research</p>
+  <h1>When should a quantum repeater swap, wait, or throw a qubit away?</h1>
+  <p class="lede">Entanglement has to be built across a long distance one short link at a time. This project finds the best moments to join links together, first with a controller that sees the whole chain, then with nodes that only know what light-speed messages have told them.</p>
+  <p class="meta">Kevin Shan &middot; Undergraduate research at UMass Amherst with Prof. Gayane Vardoyan &middot; <a href="https://github.com/kevinshan0/REU">Code on GitHub</a></p>
+  <nav class="toc" aria-label="Sections">
+    <a href="#problem">The problem</a>
+    <a href="#part1">Part 1: full knowledge</a>
+    <a href="#results">Results</a>
+    <a href="#part2">Part 2: delayed information</a>
+    <a href="#learned">What was learned</a>
+    <a href="#run">Run it</a>
+  </nav>
+</header>
+
+<section id="problem">
+<h2>The problem</h2>
+<p class="sub">A repeater chain, and the decision each middle node faces.</p>
+<figure>
+<svg viewBox="0 0 640 150" role="img" aria-labelledby="chaint" class="chart">
+<title id="chaint">A five-node repeater chain: end nodes hold one qubit, middle nodes hold two; elementary links join facing qubits, and a swap at a middle node fuses two links into one longer link</title>
+<path d="M70,40 C150,4 490,4 570,40" class="goal"/>
+<text x="320.0" y="18" text-anchor="middle" class="tick">goal: one end-to-end entangled pair</text>
+<line x1="88" x2="177" y1="78" y2="78" class="link"/>
+<line x1="213" x2="302" y1="78" y2="78" class="link"/>
+<line x1="338" x2="427" y1="78" y2="78" class="link off"/>
+<line x1="463" x2="552" y1="78" y2="78" class="link"/>
+<rect x="36" y="58" width="68" height="40" rx="8" class="node"/>
+<circle cx="88" cy="78" r="7" class="q"/>
+<text x="70" y="118" text-anchor="middle" class="tick">node 0</text>
+<rect x="161" y="58" width="68" height="40" rx="8" class="node"/>
+<circle cx="177" cy="78" r="7" class="q"/>
+<circle cx="213" cy="78" r="7" class="q"/>
+<text x="195" y="118" text-anchor="middle" class="tick">node 1</text>
+<rect x="286" y="58" width="68" height="40" rx="8" class="node"/>
+<circle cx="302" cy="78" r="7" class="q"/>
+<circle cx="338" cy="78" r="7" class="q"/>
+<text x="320" y="118" text-anchor="middle" class="tick">node 2</text>
+<rect x="411" y="58" width="68" height="40" rx="8" class="node"/>
+<circle cx="427" cy="78" r="7" class="q"/>
+<circle cx="463" cy="78" r="7" class="q"/>
+<text x="445" y="118" text-anchor="middle" class="tick">node 3</text>
+<rect x="536" y="58" width="68" height="40" rx="8" class="node"/>
+<circle cx="552" cy="78" r="7" class="q"/>
+<text x="570" y="118" text-anchor="middle" class="tick">node 4</text>
+<text x="195" y="140" text-anchor="middle" class="note">swap here?</text>
+<text x="382.5" y="70" text-anchor="middle" class="note">waiting</text>
+</svg>
+<figcaption>A chain of \(n\) nodes. The two end nodes hold one qubit each and every middle node holds two, so there are \(2n-2\) qubits. In each time slot, every empty elementary link tries to form and succeeds with probability \(p\). A middle node that holds two live qubits can attempt an <b>entanglement swap</b>, which succeeds with probability \(p_s\) and fuses its two links into one longer link. Any qubit that reaches the age cutoff \(t_{\text{cut}}\) is thrown away, along with its partner.</figcaption>
+</figure>
+<p>The goal is to deliver one entangled pair between the two end nodes as fast as possible, measured as the <b>expected number of time slots</b>. The obvious strategy, called <b>swap-asap</b>, swaps everywhere the moment it can. The question is when holding off does better, and by how much.</p>
+</section>
+
+<section id="part1">
+<h2>Part 1: a controller that sees everything</h2>
+<p class="sub">An exact Markov decision process, solved by policy iteration.</p>
+<p>The model follows Iñesta, Vardoyan, Scavuzzo and Wehner, <a href="https://arxiv.org/abs/2207.06533"><i>On the Effect of Quantum Memory Cutoffs in Entanglement Distribution</i></a>, with one deliberate change. The paper cuts a whole link once the <b>link's</b> age reaches the cutoff, which only makes sense if someone knows the whole link's history. This project uses a <b>qubit-age</b> (retention-time) cutoff instead: each qubit is discarded when its own age reaches \(t_{\text{cut}}\), which a node can check locally. Both conventions share the same topology and probabilities, so they can be compared directly.</p>
+
+<h3>The Markov decision process</h3>
+<p>The <b>state</b> is the age of every qubit. The <b>action</b> is any subset of middle nodes that hold two live qubits, meaning "try a swap here this slot." The empty set means wait, and the full set is swap-asap. Each slot costs a reward of \(-1\) with no discounting, so the value of a state is minus its expected time to delivery:</p>
+<div class="math">$$V(s) = -\,\mathbb{E}\left[\text{time slots until an end-to-end link} \mid s\right]$$</div>
+<p>The state space is discovered lazily: a state is registered the first time the dynamics actually reach it, so nothing unreachable is ever enumerated.</p>
+
+<h3>Solving policy evaluation as one linear system</h3>
+<p>Policy iteration spends nearly all its time evaluating a fixed policy \(\pi\). The usual approach repeats Bellman backups, and each sweep only pushes information one time step further, which is slow exactly in the interesting regime where links rarely form. For a fixed policy, though, the Bellman equation is a linear system that can be solved outright with one sparse factorization:</p>
+<div class="math">$$V = -\mathbf{1} + P_\pi V \quad\Longleftrightarrow\quad (I - P_\pi)\,V = -\mathbf{1}$$</div>
+<p>Here \(P_\pi\) is the transition matrix under \(\pi\). The cost then depends on how sparse the transitions are, not on how long the chain takes to deliver, and the answer is exact rather than one tolerance short.</p>
+<div class="cards">
+  <div class="card"><div class="big">224&times;</div><p>Largest measured speedup of the direct solve over iterative evaluation (4 nodes, \(p=0.25\), \(p_s=0.35\), with voluntary discard).</p></div>
+  <div class="card"><div class="big">1.6&times;</div><p>Smallest measured speedup, on easy cases. The direct answer is also the more accurate one.</p></div>
+</div>
+<p>To check what the optimal policy does to the quantum state itself, a separate simulator replays the solved policy on noisy <a href="https://github.com/QuantumSavory/QuantumSavory.jl">QuantumSavory</a> registers with depolarization and reports the end-to-end fidelity of the delivered pair.</p>
+</section>
+
+<section id="results">
+<h2>How much the optimal policy saves</h2>
+<p class="sub">Optimal policy versus swap-asap, both under the qubit-age cutoff, with swap success \(p_s = 0.5\).</p>
+<figure>
+<svg viewBox="0 0 640 300" role="img" aria-labelledby="fig1t" class="chart">
+<title id="fig1t">Percent reduction in expected delivery time, optimal policy versus swap-asap, for chains of 3, 4 and 5 nodes</title>
+<line x1="52" x2="544" y1="256.0" y2="256.0" class="grid"/>
+<text x="44" y="260.0" class="tick" text-anchor="end">0%</text>
+<line x1="52" x2="544" y1="221.7" y2="221.7" class="grid"/>
+<text x="44" y="225.7" class="tick" text-anchor="end">2%</text>
+<line x1="52" x2="544" y1="187.4" y2="187.4" class="grid"/>
+<text x="44" y="191.4" class="tick" text-anchor="end">4%</text>
+<line x1="52" x2="544" y1="153.1" y2="153.1" class="grid"/>
+<text x="44" y="157.1" class="tick" text-anchor="end">6%</text>
+<line x1="52" x2="544" y1="118.9" y2="118.9" class="grid"/>
+<text x="44" y="122.9" class="tick" text-anchor="end">8%</text>
+<line x1="52" x2="544" y1="84.6" y2="84.6" class="grid"/>
+<text x="44" y="88.6" class="tick" text-anchor="end">10%</text>
+<line x1="52" x2="544" y1="50.3" y2="50.3" class="grid"/>
+<text x="44" y="54.3" class="tick" text-anchor="end">12%</text>
+<line x1="52" x2="544" y1="16.0" y2="16.0" class="grid"/>
+<text x="44" y="20.0" class="tick" text-anchor="end">14%</text>
+<text x="52.0" y="274" class="tick" text-anchor="middle">0.2</text>
+<text x="113.5" y="274" class="tick" text-anchor="middle">0.3</text>
+<text x="175.0" y="274" class="tick" text-anchor="middle">0.4</text>
+<text x="236.5" y="274" class="tick" text-anchor="middle">0.5</text>
+<text x="298.0" y="274" class="tick" text-anchor="middle">0.6</text>
+<text x="359.5" y="274" class="tick" text-anchor="middle">0.7</text>
+<text x="421.0" y="274" class="tick" text-anchor="middle">0.8</text>
+<text x="482.5" y="274" class="tick" text-anchor="middle">0.9</text>
+<text x="544.0" y="274" class="tick" text-anchor="middle">1.0</text>
+<text x="298.0" y="296" class="axis" text-anchor="middle">p, chance an elementary link forms in one time slot</text>
+<path d="M52.0,256.0 L113.5,256.0 L175.0,256.0 L236.5,256.0 L298.0,256.0 L359.5,256.0 L421.0,256.0 L482.5,256.0 L544.0,256.0" class="ln s3"/>
+<circle cx="52.0" cy="256.0" r="3.2" class="dot s3"><title>n=3, p=0.2: optimal 18.157 vs swap-asap 18.157 slots (-0.00% faster)</title></circle>
+<circle cx="113.5" cy="256.0" r="3.2" class="dot s3"><title>n=3, p=0.3: optimal 10.492 vs swap-asap 10.492 slots (-0.00% faster)</title></circle>
+<circle cx="175.0" cy="256.0" r="3.2" class="dot s3"><title>n=3, p=0.4: optimal 7.237 vs swap-asap 7.237 slots (-0.00% faster)</title></circle>
+<circle cx="236.5" cy="256.0" r="3.2" class="dot s3"><title>n=3, p=0.5: optimal 5.455 vs swap-asap 5.455 slots (-0.00% faster)</title></circle>
+<circle cx="298.0" cy="256.0" r="3.2" class="dot s3"><title>n=3, p=0.6: optimal 4.322 vs swap-asap 4.322 slots (-0.00% faster)</title></circle>
+<circle cx="359.5" cy="256.0" r="3.2" class="dot s3"><title>n=3, p=0.7: optimal 3.525 vs swap-asap 3.525 slots (-0.00% faster)</title></circle>
+<circle cx="421.0" cy="256.0" r="3.2" class="dot s3"><title>n=3, p=0.8: optimal 2.918 vs swap-asap 2.918 slots (-0.00% faster)</title></circle>
+<circle cx="482.5" cy="256.0" r="3.2" class="dot s3"><title>n=3, p=0.9: optimal 2.424 vs swap-asap 2.424 slots (-0.00% faster)</title></circle>
+<circle cx="544.0" cy="256.0" r="3.2" class="dot s3"><title>n=3, p=1.0: optimal 2.000 vs swap-asap 2.000 slots (-0.00% faster)</title></circle>
+<text x="552.0" y="260.0" class="lbl s3">3 nodes</text>
+<path d="M52.0,223.6 L113.5,237.0 L175.0,246.4 L236.5,252.0 L298.0,254.7 L359.5,255.8 L421.0,256.0 L482.5,256.0 L544.0,256.0" class="ln s4"/>
+<circle cx="52.0" cy="223.6" r="3.2" class="dot s4"><title>n=4, p=0.2: optimal 57.226 vs swap-asap 58.327 slots (1.89% faster)</title></circle>
+<circle cx="113.5" cy="237.0" r="3.2" class="dot s4"><title>n=4, p=0.3: optimal 26.761 vs swap-asap 27.061 slots (1.11% faster)</title></circle>
+<circle cx="175.0" cy="246.4" r="3.2" class="dot s4"><title>n=4, p=0.4: optimal 16.433 vs swap-asap 16.525 slots (0.56% faster)</title></circle>
+<circle cx="236.5" cy="252.0" r="3.2" class="dot s4"><title>n=4, p=0.5: optimal 11.594 vs swap-asap 11.621 slots (0.23% faster)</title></circle>
+<circle cx="298.0" cy="254.7" r="3.2" class="dot s4"><title>n=4, p=0.6: optimal 8.864 vs swap-asap 8.871 slots (0.07% faster)</title></circle>
+<circle cx="359.5" cy="255.8" r="3.2" class="dot s4"><title>n=4, p=0.7: optimal 7.107 vs swap-asap 7.108 slots (0.01% faster)</title></circle>
+<circle cx="421.0" cy="256.0" r="3.2" class="dot s4"><title>n=4, p=0.8: optimal 5.845 vs swap-asap 5.845 slots (0.00% faster)</title></circle>
+<circle cx="482.5" cy="256.0" r="3.2" class="dot s4"><title>n=4, p=0.9: optimal 4.849 vs swap-asap 4.849 slots (0.00% faster)</title></circle>
+<circle cx="544.0" cy="256.0" r="3.2" class="dot s4"><title>n=4, p=1.0: optimal 4.000 vs swap-asap 4.000 slots (-0.00% faster)</title></circle>
+<text x="552.0" y="260.0" class="lbl s4">4 nodes</text>
+<path d="M52.0,136.4 L113.5,152.2 L175.0,156.4 L236.5,147.7 L298.0,128.5 L359.5,104.6 L421.0,82.4 L482.5,57.7 L544.0,41.7" class="ln s5"/>
+<circle cx="52.0" cy="136.4" r="3.2" class="dot s5"><title>n=5, p=0.2: optimal 167.758 vs swap-asap 180.340 slots (6.98% faster)</title></circle>
+<circle cx="113.5" cy="152.2" r="3.2" class="dot s5"><title>n=5, p=0.3: optimal 62.293 vs swap-asap 66.307 slots (6.05% faster)</title></circle>
+<circle cx="175.0" cy="156.4" r="3.2" class="dot s5"><title>n=5, p=0.4: optimal 33.360 vs swap-asap 35.418 slots (5.81% faster)</title></circle>
+<circle cx="236.5" cy="147.7" r="3.2" class="dot s5"><title>n=5, p=0.5: optimal 21.556 vs swap-asap 23.010 slots (6.32% faster)</title></circle>
+<circle cx="298.0" cy="128.5" r="3.2" class="dot s5"><title>n=5, p=0.6: optimal 15.571 vs swap-asap 16.822 slots (7.44% faster)</title></circle>
+<circle cx="359.5" cy="104.6" r="3.2" class="dot s5"><title>n=5, p=0.7: optimal 12.089 vs swap-asap 13.260 slots (8.83% faster)</title></circle>
+<circle cx="421.0" cy="82.4" r="3.2" class="dot s5"><title>n=5, p=0.8: optimal 9.851 vs swap-asap 10.961 slots (10.12% faster)</title></circle>
+<circle cx="482.5" cy="57.7" r="3.2" class="dot s5"><title>n=5, p=0.9: optimal 8.233 vs swap-asap 9.310 slots (11.57% faster)</title></circle>
+<circle cx="544.0" cy="41.7" r="3.2" class="dot s5"><title>n=5, p=1.0: optimal 7.000 vs swap-asap 8.000 slots (12.50% faster)</title></circle>
+<text x="552.0" y="45.7" class="lbl s5">5 nodes</text>
+</svg>
+<figcaption><b>Reduction in expected delivery time</b> from using the optimal policy instead of swap-asap, with cutoff \(t_{\text{cut}} = 3\). With 3 nodes there is only one middle node and nothing to coordinate, so the two policies are identical. The gap appears at 4 nodes and widens at 5, where the optimal policy is between about 6% and 12.5% faster across the whole range of \(p\). Hover a point for exact values.</figcaption>
+</figure>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Nodes</th><th>p</th><th>Swap-asap (slots)</th><th>Optimal (slots)</th><th>Saved</th></tr></thead>
+<tbody><tr><td>3</td><td>0.2</td><td>18.16</td><td>18.16</td><td>-0.0%</td></tr><tr><td>3</td><td>0.5</td><td>5.45</td><td>5.45</td><td>-0.0%</td></tr><tr><td>3</td><td>0.9</td><td>2.42</td><td>2.42</td><td>-0.0%</td></tr><tr><td>4</td><td>0.2</td><td>58.33</td><td>57.23</td><td>1.9%</td></tr><tr><td>4</td><td>0.5</td><td>11.62</td><td>11.59</td><td>0.2%</td></tr><tr><td>4</td><td>0.9</td><td>4.85</td><td>4.85</td><td>0.0%</td></tr><tr><td>5</td><td>0.2</td><td>180.34</td><td>167.76</td><td>7.0%</td></tr><tr><td>5</td><td>0.5</td><td>23.01</td><td>21.56</td><td>6.3%</td></tr><tr><td>5</td><td>0.9</td><td>9.31</td><td>8.23</td><td>11.6%</td></tr></tbody>
+</table>
+</div>
+<figure>
+<svg viewBox="0 0 604 270" role="img" aria-labelledby="fig2t" class="chart">
+<title id="fig2t">Heatmap of percent reduction in expected delivery time for a 5-node chain, by cutoff and link-generation probability</title>
+<rect x="71" y="173" width="56" height="38" rx="3" class="cell0"/>
+<rect x="71" y="173" width="56" height="38" rx="3" class="cell" fill-opacity="0.627"/>
+<text x="99.0" y="196.0" text-anchor="middle" class="cv dark">7.5%<title>cutoff 1, p=0.2: optimal 647.044 vs swap-asap 699.807 slots</title></text>
+<rect x="129" y="173" width="56" height="38" rx="3" class="cell0"/>
+<rect x="129" y="173" width="56" height="38" rx="3" class="cell" fill-opacity="0.616"/>
+<text x="157.0" y="196.0" text-anchor="middle" class="cv dark">7.4%<title>cutoff 1, p=0.3: optimal 176.431 vs swap-asap 190.506 slots</title></text>
+<rect x="187" y="173" width="56" height="38" rx="3" class="cell0"/>
+<rect x="187" y="173" width="56" height="38" rx="3" class="cell" fill-opacity="0.542"/>
+<text x="215.0" y="196.0" text-anchor="middle" class="cv">6.4%<title>cutoff 1, p=0.4: optimal 74.451 vs swap-asap 79.555 slots</title></text>
+<rect x="245" y="173" width="56" height="38" rx="3" class="cell0"/>
+<rect x="245" y="173" width="56" height="38" rx="3" class="cell" fill-opacity="0.467"/>
+<text x="273.0" y="196.0" text-anchor="middle" class="cv">5.4%<title>cutoff 1, p=0.5: optimal 39.497 vs swap-asap 41.758 slots</title></text>
+<rect x="303" y="173" width="56" height="38" rx="3" class="cell0"/>
+<rect x="303" y="173" width="56" height="38" rx="3" class="cell" fill-opacity="0.432"/>
+<text x="331.0" y="196.0" text-anchor="middle" class="cv">4.9%<title>cutoff 1, p=0.6: optimal 24.078 vs swap-asap 25.330 slots</title></text>
+<rect x="361" y="173" width="56" height="38" rx="3" class="cell0"/>
+<rect x="361" y="173" width="56" height="38" rx="3" class="cell" fill-opacity="0.429"/>
+<text x="389.0" y="196.0" text-anchor="middle" class="cv">4.9%<title>cutoff 1, p=0.7: optimal 16.191 vs swap-asap 17.027 slots</title></text>
+<rect x="419" y="173" width="56" height="38" rx="3" class="cell0"/>
+<rect x="419" y="173" width="56" height="38" rx="3" class="cell" fill-opacity="0.487"/>
+<text x="447.0" y="196.0" text-anchor="middle" class="cv">5.7%<title>cutoff 1, p=0.8: optimal 11.687 vs swap-asap 12.391 slots</title></text>
+<rect x="477" y="173" width="56" height="38" rx="3" class="cell0"/>
+<rect x="477" y="173" width="56" height="38" rx="3" class="cell" fill-opacity="0.647"/>
+<text x="505.0" y="196.0" text-anchor="middle" class="cv dark">7.8%<title>cutoff 1, p=0.9: optimal 8.886 vs swap-asap 9.638 slots</title></text>
+<rect x="535" y="173" width="56" height="38" rx="3" class="cell0"/>
+<rect x="535" y="173" width="56" height="38" rx="3" class="cell" fill-opacity="1.000"/>
+<text x="563.0" y="196.0" text-anchor="middle" class="cv dark">12.5%<title>cutoff 1, p=1.0: optimal 7.000 vs swap-asap 8.000 slots</title></text>
+<rect x="71" y="133" width="56" height="38" rx="3" class="cell0"/>
+<rect x="71" y="133" width="56" height="38" rx="3" class="cell" fill-opacity="0.618"/>
+<text x="99.0" y="156.0" text-anchor="middle" class="cv dark">7.4%<title>cutoff 2, p=0.2: optimal 273.191 vs swap-asap 295.096 slots</title></text>
+<rect x="129" y="133" width="56" height="38" rx="3" class="cell0"/>
+<rect x="129" y="133" width="56" height="38" rx="3" class="cell" fill-opacity="0.544"/>
+<text x="157.0" y="156.0" text-anchor="middle" class="cv">6.4%<title>cutoff 2, p=0.3: optimal 89.709 vs swap-asap 95.883 slots</title></text>
+<rect x="187" y="133" width="56" height="38" rx="3" class="cell0"/>
+<rect x="187" y="133" width="56" height="38" rx="3" class="cell" fill-opacity="0.497"/>
+<text x="215.0" y="156.0" text-anchor="middle" class="cv">5.8%<title>cutoff 2, p=0.4: optimal 43.660 vs swap-asap 46.354 slots</title></text>
+<rect x="245" y="133" width="56" height="38" rx="3" class="cell0"/>
+<rect x="245" y="133" width="56" height="38" rx="3" class="cell" fill-opacity="0.484"/>
+<text x="273.0" y="156.0" text-anchor="middle" class="cv">5.6%<title>cutoff 2, p=0.5: optimal 26.124 vs swap-asap 27.685 slots</title></text>
+<rect x="303" y="133" width="56" height="38" rx="3" class="cell0"/>
+<rect x="303" y="133" width="56" height="38" rx="3" class="cell" fill-opacity="0.518"/>
+<text x="331.0" y="156.0" text-anchor="middle" class="cv">6.1%<title>cutoff 2, p=0.6: optimal 17.723 vs swap-asap 18.873 slots</title></text>
+<rect x="361" y="133" width="56" height="38" rx="3" class="cell0"/>
+<rect x="361" y="133" width="56" height="38" rx="3" class="cell" fill-opacity="0.605"/>
+<text x="389.0" y="156.0" text-anchor="middle" class="cv dark">7.2%<title>cutoff 2, p=0.7: optimal 13.064 vs swap-asap 14.085 slots</title></text>
+<rect x="419" y="133" width="56" height="38" rx="3" class="cell0"/>
+<rect x="419" y="133" width="56" height="38" rx="3" class="cell" fill-opacity="0.739"/>
+<text x="447.0" y="156.0" text-anchor="middle" class="cv dark">9.0%<title>cutoff 2, p=0.8: optimal 10.202 vs swap-asap 11.214 slots</title></text>
+<rect x="477" y="133" width="56" height="38" rx="3" class="cell0"/>
+<rect x="477" y="133" width="56" height="38" rx="3" class="cell" fill-opacity="0.892"/>
+<text x="505.0" y="156.0" text-anchor="middle" class="cv dark">11.1%<title>cutoff 2, p=0.9: optimal 8.311 vs swap-asap 9.345 slots</title></text>
+<rect x="535" y="133" width="56" height="38" rx="3" class="cell0"/>
+<rect x="535" y="133" width="56" height="38" rx="3" class="cell" fill-opacity="1.000"/>
+<text x="563.0" y="156.0" text-anchor="middle" class="cv dark">12.5%<title>cutoff 2, p=1.0: optimal 7.000 vs swap-asap 8.000 slots</title></text>
+<rect x="71" y="93" width="56" height="38" rx="3" class="cell0"/>
+<rect x="71" y="93" width="56" height="38" rx="3" class="cell" fill-opacity="0.585"/>
+<text x="99.0" y="116.0" text-anchor="middle" class="cv dark">7.0%<title>cutoff 3, p=0.2: optimal 167.758 vs swap-asap 180.340 slots</title></text>
+<rect x="129" y="93" width="56" height="38" rx="3" class="cell0"/>
+<rect x="129" y="93" width="56" height="38" rx="3" class="cell" fill-opacity="0.515"/>
+<text x="157.0" y="116.0" text-anchor="middle" class="cv">6.1%<title>cutoff 3, p=0.3: optimal 62.293 vs swap-asap 66.307 slots</title></text>
+<rect x="187" y="93" width="56" height="38" rx="3" class="cell0"/>
+<rect x="187" y="93" width="56" height="38" rx="3" class="cell" fill-opacity="0.497"/>
+<text x="215.0" y="116.0" text-anchor="middle" class="cv">5.8%<title>cutoff 3, p=0.4: optimal 33.360 vs swap-asap 35.418 slots</title></text>
+<rect x="245" y="93" width="56" height="38" rx="3" class="cell0"/>
+<rect x="245" y="93" width="56" height="38" rx="3" class="cell" fill-opacity="0.535"/>
+<text x="273.0" y="116.0" text-anchor="middle" class="cv">6.3%<title>cutoff 3, p=0.5: optimal 21.556 vs swap-asap 23.010 slots</title></text>
+<rect x="303" y="93" width="56" height="38" rx="3" class="cell0"/>
+<rect x="303" y="93" width="56" height="38" rx="3" class="cell" fill-opacity="0.619"/>
+<text x="331.0" y="116.0" text-anchor="middle" class="cv dark">7.4%<title>cutoff 3, p=0.6: optimal 15.571 vs swap-asap 16.822 slots</title></text>
+<rect x="361" y="93" width="56" height="38" rx="3" class="cell0"/>
+<rect x="361" y="93" width="56" height="38" rx="3" class="cell" fill-opacity="0.724"/>
+<text x="389.0" y="116.0" text-anchor="middle" class="cv dark">8.8%<title>cutoff 3, p=0.7: optimal 12.089 vs swap-asap 13.260 slots</title></text>
+<rect x="419" y="93" width="56" height="38" rx="3" class="cell0"/>
+<rect x="419" y="93" width="56" height="38" rx="3" class="cell" fill-opacity="0.821"/>
+<text x="447.0" y="116.0" text-anchor="middle" class="cv dark">10.1%<title>cutoff 3, p=0.8: optimal 9.851 vs swap-asap 10.961 slots</title></text>
+<rect x="477" y="93" width="56" height="38" rx="3" class="cell0"/>
+<rect x="477" y="93" width="56" height="38" rx="3" class="cell" fill-opacity="0.930"/>
+<text x="505.0" y="116.0" text-anchor="middle" class="cv dark">11.6%<title>cutoff 3, p=0.9: optimal 8.233 vs swap-asap 9.310 slots</title></text>
+<rect x="535" y="93" width="56" height="38" rx="3" class="cell0"/>
+<rect x="535" y="93" width="56" height="38" rx="3" class="cell" fill-opacity="1.000"/>
+<text x="563.0" y="116.0" text-anchor="middle" class="cv dark">12.5%<title>cutoff 3, p=1.0: optimal 7.000 vs swap-asap 8.000 slots</title></text>
+<rect x="71" y="53" width="56" height="38" rx="3" class="cell0"/>
+<rect x="71" y="53" width="56" height="38" rx="3" class="cell" fill-opacity="0.565"/>
+<text x="99.0" y="76.0" text-anchor="middle" class="cv dark">6.7%<title>cutoff 4, p=0.2: optimal 122.267 vs swap-asap 131.074 slots</title></text>
+<rect x="129" y="53" width="56" height="38" rx="3" class="cell0"/>
+<rect x="129" y="53" width="56" height="38" rx="3" class="cell" fill-opacity="0.518"/>
+<text x="157.0" y="76.0" text-anchor="middle" class="cv">6.1%<title>cutoff 4, p=0.3: optimal 49.782 vs swap-asap 53.010 slots</title></text>
+<rect x="187" y="53" width="56" height="38" rx="3" class="cell0"/>
+<rect x="187" y="53" width="56" height="38" rx="3" class="cell" fill-opacity="0.544"/>
+<text x="215.0" y="76.0" text-anchor="middle" class="cv">6.4%<title>cutoff 4, p=0.4: optimal 28.534 vs swap-asap 30.498 slots</title></text>
+<rect x="245" y="53" width="56" height="38" rx="3" class="cell0"/>
+<rect x="245" y="53" width="56" height="38" rx="3" class="cell" fill-opacity="0.614"/>
+<text x="273.0" y="76.0" text-anchor="middle" class="cv dark">7.4%<title>cutoff 4, p=0.5: optimal 19.455 vs swap-asap 21.003 slots</title></text>
+<rect x="303" y="53" width="56" height="38" rx="3" class="cell0"/>
+<rect x="303" y="53" width="56" height="38" rx="3" class="cell" fill-opacity="0.715"/>
+<text x="331.0" y="76.0" text-anchor="middle" class="cv dark">8.7%<title>cutoff 4, p=0.6: optimal 14.637 vs swap-asap 16.033 slots</title></text>
+<rect x="361" y="53" width="56" height="38" rx="3" class="cell0"/>
+<rect x="361" y="53" width="56" height="38" rx="3" class="cell" fill-opacity="0.809"/>
+<text x="389.0" y="76.0" text-anchor="middle" class="cv dark">10.0%<title>cutoff 4, p=0.7: optimal 11.706 vs swap-asap 13.000 slots</title></text>
+<rect x="419" y="53" width="56" height="38" rx="3" class="cell0"/>
+<rect x="419" y="53" width="56" height="38" rx="3" class="cell" fill-opacity="0.867"/>
+<text x="447.0" y="76.0" text-anchor="middle" class="cv dark">10.7%<title>cutoff 4, p=0.8: optimal 9.734 vs swap-asap 10.905 slots</title></text>
+<rect x="477" y="53" width="56" height="38" rx="3" class="cell0"/>
+<rect x="477" y="53" width="56" height="38" rx="3" class="cell" fill-opacity="0.934"/>
+<text x="505.0" y="76.0" text-anchor="middle" class="cv dark">11.6%<title>cutoff 4, p=0.9: optimal 8.224 vs swap-asap 9.306 slots</title></text>
+<rect x="535" y="53" width="56" height="38" rx="3" class="cell0"/>
+<rect x="535" y="53" width="56" height="38" rx="3" class="cell" fill-opacity="1.000"/>
+<text x="563.0" y="76.0" text-anchor="middle" class="cv dark">12.5%<title>cutoff 4, p=1.0: optimal 7.000 vs swap-asap 8.000 slots</title></text>
+<rect x="71" y="13" width="56" height="38" rx="3" class="cell0"/>
+<rect x="71" y="13" width="56" height="38" rx="3" class="cell" fill-opacity="0.546"/>
+<text x="99.0" y="36.0" text-anchor="middle" class="cv">6.5%<title>cutoff 5, p=0.2: optimal 98.189 vs swap-asap 104.971 slots</title></text>
+<rect x="129" y="13" width="56" height="38" rx="3" class="cell0"/>
+<rect x="129" y="13" width="56" height="38" rx="3" class="cell" fill-opacity="0.543"/>
+<text x="157.0" y="36.0" text-anchor="middle" class="cv">6.4%<title>cutoff 5, p=0.3: optimal 42.912 vs swap-asap 45.856 slots</title></text>
+<rect x="187" y="13" width="56" height="38" rx="3" class="cell0"/>
+<rect x="187" y="13" width="56" height="38" rx="3" class="cell" fill-opacity="0.610"/>
+<text x="215.0" y="36.0" text-anchor="middle" class="cv dark">7.3%<title>cutoff 5, p=0.4: optimal 25.892 vs swap-asap 27.935 slots</title></text>
+<rect x="245" y="13" width="56" height="38" rx="3" class="cell0"/>
+<rect x="245" y="13" width="56" height="38" rx="3" class="cell" fill-opacity="0.704"/>
+<text x="273.0" y="36.0" text-anchor="middle" class="cv dark">8.6%<title>cutoff 5, p=0.5: optimal 18.328 vs swap-asap 20.044 slots</title></text>
+<rect x="303" y="13" width="56" height="38" rx="3" class="cell0"/>
+<rect x="303" y="13" width="56" height="38" rx="3" class="cell" fill-opacity="0.798"/>
+<text x="331.0" y="36.0" text-anchor="middle" class="cv dark">9.8%<title>cutoff 5, p=0.6: optimal 14.167 vs swap-asap 15.710 slots</title></text>
+<rect x="361" y="13" width="56" height="38" rx="3" class="cell0"/>
+<rect x="361" y="13" width="56" height="38" rx="3" class="cell" fill-opacity="0.869"/>
+<text x="389.0" y="36.0" text-anchor="middle" class="cv dark">10.8%<title>cutoff 5, p=0.7: optimal 11.528 vs swap-asap 12.917 slots</title></text>
+<rect x="419" y="13" width="56" height="38" rx="3" class="cell0"/>
+<rect x="419" y="13" width="56" height="38" rx="3" class="cell" fill-opacity="0.890"/>
+<text x="447.0" y="36.0" text-anchor="middle" class="cv dark">11.0%<title>cutoff 5, p=0.8: optimal 9.689 vs swap-asap 10.892 slots</title></text>
+<rect x="477" y="13" width="56" height="38" rx="3" class="cell0"/>
+<rect x="477" y="13" width="56" height="38" rx="3" class="cell" fill-opacity="0.935"/>
+<text x="505.0" y="36.0" text-anchor="middle" class="cv dark">11.6%<title>cutoff 5, p=0.9: optimal 8.223 vs swap-asap 9.306 slots</title></text>
+<rect x="535" y="13" width="56" height="38" rx="3" class="cell0"/>
+<rect x="535" y="13" width="56" height="38" rx="3" class="cell" fill-opacity="1.000"/>
+<text x="563.0" y="36.0" text-anchor="middle" class="cv dark">12.5%<title>cutoff 5, p=1.0: optimal 7.000 vs swap-asap 8.000 slots</title></text>
+<text x="99.0" y="230" text-anchor="middle" class="tick">0.2</text>
+<text x="157.0" y="230" text-anchor="middle" class="tick">0.3</text>
+<text x="215.0" y="230" text-anchor="middle" class="tick">0.4</text>
+<text x="273.0" y="230" text-anchor="middle" class="tick">0.5</text>
+<text x="331.0" y="230" text-anchor="middle" class="tick">0.6</text>
+<text x="389.0" y="230" text-anchor="middle" class="tick">0.7</text>
+<text x="447.0" y="230" text-anchor="middle" class="tick">0.8</text>
+<text x="505.0" y="230" text-anchor="middle" class="tick">0.9</text>
+<text x="563.0" y="230" text-anchor="middle" class="tick">1.0</text>
+<text x="60" y="196.0" text-anchor="end" class="tick">1</text>
+<text x="60" y="156.0" text-anchor="end" class="tick">2</text>
+<text x="60" y="116.0" text-anchor="end" class="tick">3</text>
+<text x="60" y="76.0" text-anchor="end" class="tick">4</text>
+<text x="60" y="36.0" text-anchor="end" class="tick">5</text>
+<text x="331.0" y="264" class="axis" text-anchor="middle">p, chance an elementary link forms in one time slot</text>
+<text transform="translate(16,112.0) rotate(-90)" class="axis" text-anchor="middle">cutoff t_cut (slots)</text>
+</svg>
+<figcaption><b>Five-node chain, reduction in expected delivery time</b> by cutoff (rows) and link-generation probability \(p\) (columns), with \(p_s = 0.5\). The optimal policy is faster in every cell, by between 4.9% and 12.5%. The gap is widest when links form reliably (\(p\) near 1) and narrowest at middle values of \(p\) with a cutoff of 1 slot. Raising the cutoff mostly widens the gap at middle and high values of \(p\). Hover a cell for exact values.</figcaption>
+</figure>
+<p class="meta">These numbers were computed for this page with the repository's own solver (<code>policy.py</code>, direct method, tolerance \(10^{-7}\)). The raw values are in <a href="results.json">results.json</a>.</p>
+</section>
+
+<section id="part2">
+<h2>Part 2: nodes that only know what has reached them</h2>
+<p class="sub">Removing the all-seeing controller turns the problem into a decentralized, partially observable one.</p>
+<p>Part 1 assumes a controller that sees every qubit's age instantly. That is physically wrong. A swap is a local measurement whose result has to be announced, and the announcement travels at the speed of light, one hop per time step in this model. The far end of a link cannot know its link was consumed or destroyed until that message arrives.</p>
+<p>Without that assumption, the problem becomes a <b>decentralized partially observable Markov decision process</b> (Dec-POMDP). Each node acts on a local observation, and a node cannot tell a live link from a dead one. That produces the effect the whole investigation centers on: <b>hanging qubits</b>, which are stored, ageing and blocking new links even though their partner is already gone.</p>
+
+<h3>One time step, in six phases</h3>
+<ol class="phases">
+  <li>Every stored qubit ages by one slot.</li>
+  <li>Every empty elementary link attempts generation. Success is heralded to both ends immediately, which is the only knowledge in the model that is not delayed.</li>
+  <li>Classical messages from the neighbours arrive.</li>
+  <li>Every node acts on its own delayed view: swaps first, then voluntary discards.</li>
+  <li>The cutoff removes anything that has reached \(t_{\text{cut}}\).</li>
+  <li>Every node tells its neighbours what it now knows.</li>
+</ol>
+<p>Two kinds of message travel. A <b>flooded age ledger</b> reaches the whole chain and gets one time step staler per hop. <b>Targeted announcements</b> are sent only when something happens to a link (an update after a successful swap, a delete after a failed swap or a discard), and they are addressed to a specific occupancy of a slot so that a late message cannot corrupt a newer link.</p>
+<p>Policies are solved with <b>JESP</b> (Joint Equilibrium-based Search for Policies): hold every other node fixed, compute one node's best response from Monte-Carlo rollouts, solve that with the same sparse linear system as Part 1, and repeat. A Python port of the dynamics is checked against the Julia physics simulator with a two-sample z-test on mean delivery time.</p>
+</section>
+
+<section id="learned">
+<h2>What was learned</h2>
+<div class="cards">
+  <div class="card"><div class="big">10&ndash;13%</div><p>of all swap-asap swaps used at least one hanging input, over 3,000 episodes on a 5-node chain.</p></div>
+  <div class="card"><div class="big">~23%</div><p>of all occupied slot-time was spent on qubits that were already useless (\(p=0.9\), \(t_{\text{cut}}=6\)).</p></div>
+</div>
+<p><b>Swapping against a hanging qubit also destroys the good link.</b> The swap fails deterministically, both local qubits are consumed, and the healthy side's far end becomes a new hanging qubit that will not find out for several time steps.</p>
+<p><b>A cutoff-aware policy helps, but only when the cutoff is long enough for the news to arrive in time.</b> It discards a qubit as soon as a delete message reaches it, or when the ledger says the far end must already be past its cutoff.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Setting</th><th>Swap-asap, expected slots</th><th>Cutoff-aware, expected slots</th><th>Discards that beat the cutoff</th></tr></thead>
+<tbody>
+<tr><td>\(p=0.9,\ t_{\text{cut}}=6\)</td><td>4.657</td><td><b>4.519</b> (3.0% faster)</td><td>325 of 351 (93%)</td></tr>
+<tr><td>\(p=0.5,\ t_{\text{cut}}=3\)</td><td>7.563</td><td><b>7.435</b> (1.7% faster)</td><td>420 of 935 (45%)</td></tr>
+<tr><td>\(p=0.4,\ t_{\text{cut}}=2\)</td><td>13.371</td><td>13.371 (no change)</td><td>0 of 773 (0%)</td></tr>
+</tbody>
+</table>
+</div>
+<div class="callout"><p>At \(t_{\text{cut}}=2\), the information arrives and is used correctly, but it is still worthless: a message needs at least one hop, and the qubit only lives for two.</p></div>
+<p><b>The ledger channel never fired.</b> Every improvement came from the targeted messages, because a delete message always arrives at least as early as anything the ledger could infer. <b>The staleness feature is the open lead:</b> every node observes how long ago each belief was confirmed, and neither handwritten policy uses it yet.</p>
+</section>
+
+<section id="run">
+<h2>Run it</h2>
+<p class="sub">Python 3.12 or newer with uv, plus Julia for the fidelity simulators.</p>
+<pre><code>git clone https://github.com/kevinshan0/REU
+cd REU/linear-repeater-chain
+uv sync
+julia --project=. -e 'using Pkg; Pkg.instantiate()'
+
+# optimal policy, exact sparse evaluation
+uv run python src/policy.py --n 5 --p 0.9 --p_s 0.5 --cutoff 2 --method direct
+
+# swap-asap baseline
+uv run python src/policy.py --n 5 --p 0.9 --p_s 0.5 --cutoff 2 --policy swap-asap
+
+# delayed-information model: verify against the simulator, then solve with JESP
+uv run python src/info_delay_solver.py --verify --n 5 --p 0.9 --p_s 0.9 --t-cut 6
+uv run python src/info_delay_solver.py --n 5 --p 0.9 --p_s 0.9 --t-cut 6 --simulate</code></pre>
+<p>The full write-ups are in the repository: <a href="https://github.com/kevinshan0/REU/blob/main/linear-repeater-chain/CUTOFF-INFO.md">qubit-age cutoffs</a>, <a href="https://github.com/kevinshan0/REU/blob/main/linear-repeater-chain/SPARSE-POLICY-EVAL.md">the sparse evaluation</a>, <a href="https://github.com/kevinshan0/REU/blob/main/linear-repeater-chain/INFO-DELAY.md">the delayed-information model</a> and <a href="https://github.com/kevinshan0/REU/blob/main/linear-repeater-chain/INFO-DELAY-TRACE.md">a step-by-step trace of two episodes</a>.</p>
+</section>
+
+<footer>
+<p><b>References</b></p>
+<ul>
+<li>Iñesta, Vardoyan, Scavuzzo, Wehner. <i>On the Effect of Quantum Memory Cutoffs in Entanglement Distribution.</i> <a href="https://arxiv.org/abs/2207.06533">arXiv:2207.06533</a>.</li>
+<li>Nair, Tambe, Yokoo, Pynadath, Marsella. <i>Taming Decentralized POMDPs: Towards Efficient Policy Computation for Multiagent Settings.</i> IJCAI 2003.</li>
+<li>McMahan, Likhachev, Gordon. <i>Bounded Real-Time Dynamic Programming.</i> ICML 2005.</li>
+<li><a href="https://github.com/QuantumSavory/QuantumSavory.jl">QuantumSavory.jl</a></li>
+</ul>
+</footer>
+</main>
+</body>
+</html>
